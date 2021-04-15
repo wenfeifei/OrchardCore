@@ -1,8 +1,6 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Net;
-using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.DataProtection;
@@ -21,7 +19,7 @@ namespace OrchardCore.DisplayManagement.Notify
     {
         public const string CookiePrefix = "orch_notify";
         private readonly INotifier _notifier;
-        private readonly dynamic _shapeFactory;
+        private readonly IShapeFactory _shapeFactory;
         private readonly ILayoutAccessor _layoutAccessor;
         private readonly IDataProtectionProvider _dataProtectionProvider;
 
@@ -29,7 +27,7 @@ namespace OrchardCore.DisplayManagement.Notify
         private bool _shouldDeleteCookie;
         private string _tenantPath;
         private readonly HtmlEncoder _htmlEncoder;
-        private readonly ILogger<NotifyFilter> _logger;
+        private readonly ILogger _logger;
 
         public NotifyFilter(
             INotifier notifier,
@@ -59,7 +57,7 @@ namespace OrchardCore.DisplayManagement.Notify
                 return;
             }
 
-            DeserializeNotifyEntries(messages, out NotifyEntry[] messageEntries);
+            DeserializeNotifyEntries(messages, out var messageEntries);
 
             if (messageEntries == null)
             {
@@ -122,12 +120,17 @@ namespace OrchardCore.DisplayManagement.Notify
                 return;
             }
 
-            dynamic layout = await _layoutAccessor.GetLayoutAsync();
+            var layout = await _layoutAccessor.GetLayoutAsync();
+
             var messagesZone = layout.Zones["Messages"];
 
-            foreach (var messageEntry in _existingEntries)
+            if (messagesZone is IShape zone)
             {
-                messagesZone = messagesZone.Add(await _shapeFactory.Message(messageEntry));
+                foreach (var messageEntry in _existingEntries)
+                {
+                    // Also retrieve the actual zone in case it was only a temporary empty zone created on demand.
+                    zone = await zone.AddAsync(await _shapeFactory.CreateAsync("Message", Arguments.From(messageEntry)));
+                }
             }
 
             DeleteCookies(filterContext);

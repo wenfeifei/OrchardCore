@@ -1,8 +1,7 @@
 using System;
+using System.Text.Encodings.Web;
 using System.Threading.Tasks;
-using Fluid;
 using Microsoft.AspNetCore.Html;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using OrchardCore.DisplayManagement.Descriptors;
 using OrchardCore.DisplayManagement.Title;
@@ -17,6 +16,7 @@ namespace OrchardCore.DisplayManagement.Shapes
     public class PageTitleShapes : IShapeAttributeProvider
     {
         private IPageTitleBuilder _pageTitleBuilder;
+
         public IPageTitleBuilder Title
         {
             get
@@ -31,7 +31,7 @@ namespace OrchardCore.DisplayManagement.Shapes
         }
 
         [Shape]
-        public async Task<IHtmlContent> PageTitle(IHtmlHelper Html)
+        public async Task<IHtmlContent> PageTitle()
         {
             var siteSettings = await ShellScope.Services.GetRequiredService<ISiteService>().GetSiteSettingsAsync();
 
@@ -43,8 +43,10 @@ namespace OrchardCore.DisplayManagement.Shapes
             else
             {
                 var liquidTemplateManager = ShellScope.Services.GetRequiredService<ILiquidTemplateManager>();
-                var result = await liquidTemplateManager.RenderAsync(siteSettings.PageTitleFormat, System.Text.Encodings.Web.HtmlEncoder.Default, new TemplateContext());
-                return new HtmlString(result);
+                var htmlEncoder = ShellScope.Services.GetRequiredService<HtmlEncoder>();
+
+                var result = await liquidTemplateManager.RenderHtmlContentAsync(siteSettings.PageTitleFormat, htmlEncoder);
+                return result;
             }
         }
     }

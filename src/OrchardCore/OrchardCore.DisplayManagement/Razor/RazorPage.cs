@@ -1,13 +1,13 @@
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Html;
 using Microsoft.AspNetCore.Mvc.Localization;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.DependencyInjection;
-using OrchardCore.DisplayManagement.Shapes;
+using OrchardCore.DisplayManagement.Html;
 using OrchardCore.DisplayManagement.Title;
+using OrchardCore.DisplayManagement.Zones;
 using OrchardCore.Settings;
 
 namespace OrchardCore.DisplayManagement.Razor
@@ -62,13 +62,7 @@ namespace OrchardCore.DisplayManagement.Razor
         /// (await New.MyShape()).A(1).B("Some text")
         /// </code>
         /// </example>
-        public dynamic New
-        {
-            get
-            {
-                return Factory;
-            }
-        }
+        public dynamic New => Factory;
 
         /// <summary>
         /// Gets an <see cref="IShapeFactory"/> to create new shapes.
@@ -88,6 +82,31 @@ namespace OrchardCore.DisplayManagement.Razor
         /// <param name="shape">The shape.</param>
         public Task<IHtmlContent> DisplayAsync(dynamic shape)
         {
+            if (shape is IShape s)
+            {
+                EnsureDisplayHelper();
+                return _displayHelper.ShapeExecuteAsync(s);
+            }
+
+            if (shape is IHtmlContent hc)
+            {
+                return Task.FromResult(hc);
+            }
+
+            if (shape is string str)
+            {
+                return Task.FromResult<IHtmlContent>(new HtmlContentString(str));
+            }
+
+            throw new ArgumentException("DisplayAsync requires an instance of IShape");
+        }
+
+        /// <summary>
+        /// Renders a shape.
+        /// </summary>
+        /// <param name="shape">The shape.</param>
+        public Task<IHtmlContent> DisplayAsync(IShape shape)
+        {
             EnsureDisplayHelper();
             return _displayHelper.ShapeExecuteAsync(shape);
         }
@@ -106,8 +125,9 @@ namespace OrchardCore.DisplayManagement.Razor
             }
         }
 
-        private dynamic _themeLayout;
-        public dynamic ThemeLayout
+        protected IZoneHolding _themeLayout;
+
+        public IZoneHolding ThemeLayout
         {
             get
             {
@@ -133,7 +153,7 @@ namespace OrchardCore.DisplayManagement.Razor
                 {
                     if (layout.Metadata.Alternates.Count > 0)
                     {
-                        return layout.Metadata.Alternates.Last();
+                        return layout.Metadata.Alternates.Last;
                     }
 
                     return layout.Metadata.Type;
@@ -148,7 +168,7 @@ namespace OrchardCore.DisplayManagement.Razor
                 {
                     if (layout.Metadata.Alternates.Contains(value))
                     {
-                        if (layout.Metadata.Alternates.Last() == value)
+                        if (layout.Metadata.Alternates.Last == value)
                         {
                             return;
                         }
@@ -162,6 +182,7 @@ namespace OrchardCore.DisplayManagement.Razor
         }
 
         private IPageTitleBuilder _pageTitleBuilder;
+
         public IPageTitleBuilder Title
         {
             get
@@ -187,7 +208,7 @@ namespace OrchardCore.DisplayManagement.Razor
                 if (_t == null)
                 {
                     _t = Context.RequestServices.GetRequiredService<IViewLocalizer>();
-                    ((IViewContextAware)_t).Contextualize(this.ViewContext);
+                    ((IViewContextAware)_t).Contextualize(ViewContext);
                 }
 
                 return _t;
@@ -218,7 +239,7 @@ namespace OrchardCore.DisplayManagement.Razor
         {
             if (!String.IsNullOrEmpty(segment))
             {
-                Title.AddSegment(new HtmlString(HtmlEncoder.Encode(segment)), position);
+                Title.AddSegment(new HtmlContentString(segment), position);
             }
 
             return Title.GenerateTitle(separator);
@@ -238,23 +259,46 @@ namespace OrchardCore.DisplayManagement.Razor
         /// </summary>
         /// <param name="shape">The shape.</param>
         /// <returns>A new <see cref="TagBuilder"/>.</returns>
-        public TagBuilder Tag(dynamic shape)
+        public TagBuilder Tag(IShape shape)
         {
-            return Shape.GetTagBuilder(shape);
+            return shape.GetTagBuilder();
         }
 
-        public TagBuilder Tag(dynamic shape, string tag)
+        /// <summary>
+        /// Creates a <see cref="TagBuilder"/> to render a shape.
+        /// </summary>
+        /// <param name="shape">The shape.</param>
+        /// <param name="tag">The tag name to use.</param>
+        /// <returns>A new <see cref="TagBuilder"/>.</returns>
+        public TagBuilder Tag(IShape shape, string tag)
         {
-            return Shape.GetTagBuilder(shape, tag);
+            return shape.GetTagBuilder(tag);
         }
 
-        // <summary>
+        /// <summary>
         /// In a Razor layout page, renders the portion of a content page that is not within a named zone.
         /// </summary>
         /// <returns>The HTML content to render.</returns>
         public Task<IHtmlContent> RenderBodyAsync()
         {
-            return DisplayAsync(ThemeLayout.Content);
+            return DisplayAsync(ThemeLayout.Zones["Content"]);
+        }
+
+        /// <summary>
+        /// Check if a zone is defined in the layout or it has items.
+        /// </summary>
+        /// <param name="name"></param>
+        /// <returns></returns>
+        public new bool IsSectionDefined(string name)
+        {
+            // We can replace the base implementation as it can't be called on a view that is not an actual MVC Layout.
+
+            if (name == null)
+            {
+                throw new ArgumentNullException(nameof(name));
+            }
+
+            return ThemeLayout.Zones.IsNotEmpty(name);
         }
 
         /// <summary>
@@ -320,9 +364,9 @@ namespace OrchardCore.DisplayManagement.Razor
                 throw new ArgumentNullException(nameof(name));
             }
 
-            var zone = ThemeLayout[name];
+            var zone = ThemeLayout.Zones[name];
 
-            if (required && zone != null && zone.Items.Count == 0)
+            if (required && zone.IsNullOrEmpty())
             {
                 throw new InvalidOperationException("Zone not found: " + name);
             }
@@ -341,7 +385,7 @@ namespace OrchardCore.DisplayManagement.Razor
         }
 
         /// <summary>
-        /// Returns the full path of the current request.
+        /// Returns the full escaped path of the current request.
         /// </summary>
         public string FullRequestPath => Context.Request.PathBase + Context.Request.Path + Context.Request.QueryString;
 

@@ -1,5 +1,4 @@
 using System;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using OrchardCore.Microsoft.Authentication.Services;
 using OrchardCore.Microsoft.Authentication.Settings;
@@ -22,18 +21,19 @@ namespace OrchardCore.Microsoft.Authentication.Recipes
 
         public async Task ExecuteAsync(RecipeExecutionContext context)
         {
-            if (!string.Equals(context.Name, nameof(AzureADSettings), StringComparison.OrdinalIgnoreCase))
+            if (!String.Equals(context.Name, nameof(AzureADSettings), StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
             var model = context.Step.ToObject<AzureADSettingsStepModel>();
+            var settings = await _azureADService.LoadSettingsAsync();
 
-            var settings = await _azureADService.GetSettingsAsync();
             settings.AppId = model.AppId;
             settings.TenantId = model.TenantId;
             settings.DisplayName = model.DisplayName;
             settings.CallbackPath = model.CallbackPath;
+
             await _azureADService.UpdateSettingsAsync(settings);
         }
     }

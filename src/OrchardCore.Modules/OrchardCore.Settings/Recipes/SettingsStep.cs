@@ -27,7 +27,7 @@ namespace OrchardCore.Settings.Recipes
             }
 
             var model = context.Step;
-            var site = await _siteService.GetSiteSettingsAsync();
+            var site = await _siteService.LoadSiteSettingsAsync();
 
             foreach (JProperty property in model.Properties())
             {
@@ -54,7 +54,7 @@ namespace OrchardCore.Settings.Recipes
                         break;
 
                     case "ResourceDebugMode":
-                        site.ResourceDebugMode = (ResourceDebugMode) property.Value.Value<int>();
+                        site.ResourceDebugMode = (ResourceDebugMode)property.Value.Value<int>();
                         break;
 
                     case "SiteName":
@@ -91,6 +91,10 @@ namespace OrchardCore.Settings.Recipes
 
                     case "HomeRoute":
                         site.HomeRoute = property.Value.ToObject<RouteValueDictionary>();
+                        break;
+
+                    case "CacheMode":
+                        site.CacheMode = (CacheMode)property.Value.Value<int>();
                         break;
 
                     default:

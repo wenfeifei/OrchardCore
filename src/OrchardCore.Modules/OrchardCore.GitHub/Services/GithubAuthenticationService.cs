@@ -4,7 +4,6 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Localization;
 using OrchardCore.Entities;
-using OrchardCore.Environment.Shell;
 using OrchardCore.GitHub.Settings;
 using OrchardCore.Settings;
 
@@ -13,22 +12,25 @@ namespace OrchardCore.GitHub.Services
     public class GitHubAuthenticationService : IGitHubAuthenticationService
     {
         private readonly ISiteService _siteService;
-        private readonly IStringLocalizer<GitHubAuthenticationService> T;
-        private readonly ShellSettings _shellSettings;
+        private readonly IStringLocalizer S;
 
         public GitHubAuthenticationService(
             ISiteService siteService,
-            ShellSettings shellSettings,
             IStringLocalizer<GitHubAuthenticationService> stringLocalizer)
         {
-            _shellSettings = shellSettings;
             _siteService = siteService;
-            T = stringLocalizer;
+            S = stringLocalizer;
         }
 
         public async Task<GitHubAuthenticationSettings> GetSettingsAsync()
         {
             var container = await _siteService.GetSiteSettingsAsync();
+            return container.As<GitHubAuthenticationSettings>();
+        }
+
+        public async Task<GitHubAuthenticationSettings> LoadSettingsAsync()
+        {
+            var container = await _siteService.LoadSiteSettingsAsync();
             return container.As<GitHubAuthenticationSettings>();
         }
 
@@ -38,13 +40,15 @@ namespace OrchardCore.GitHub.Services
             {
                 throw new ArgumentNullException(nameof(settings));
             }
-            var container = await _siteService.GetSiteSettingsAsync();
+
+            var container = await _siteService.LoadSiteSettingsAsync();
             container.Alter<GitHubAuthenticationSettings>(nameof(GitHubAuthenticationSettings), aspect =>
             {
                 aspect.ClientID = settings.ClientID;
                 aspect.ClientSecret = settings.ClientSecret;
                 aspect.CallbackPath = settings.CallbackPath;
             });
+
             await _siteService.UpdateSiteSettingsAsync(container);
         }
 
@@ -55,16 +59,15 @@ namespace OrchardCore.GitHub.Services
                 throw new ArgumentNullException(nameof(settings));
             }
 
-            if (string.IsNullOrWhiteSpace(settings.ClientID))
+            if (String.IsNullOrWhiteSpace(settings.ClientID))
             {
-                yield return new ValidationResult(T["ClientID is required"], new string[] { nameof(settings.ClientID) });
+                yield return new ValidationResult(S["ClientID is required"], new string[] { nameof(settings.ClientID) });
             }
 
-            if (string.IsNullOrWhiteSpace(settings.ClientSecret))
+            if (String.IsNullOrWhiteSpace(settings.ClientSecret))
             {
-                yield return new ValidationResult(T["ClientSecret is required"], new string[] { nameof(settings.ClientSecret) });
+                yield return new ValidationResult(S["ClientSecret is required"], new string[] { nameof(settings.ClientSecret) });
             }
         }
-
     }
 }

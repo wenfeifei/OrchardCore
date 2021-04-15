@@ -1,5 +1,5 @@
-using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.ContentManagement.Metadata;
+using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.Data.Migration;
 using OrchardCore.Flows.Models;
 
@@ -7,7 +7,7 @@ namespace OrchardCore.Flows
 {
     public class Migrations : DataMigration
     {
-        IContentDefinitionManager _contentDefinitionManager;
+        private IContentDefinitionManager _contentDefinitionManager;
 
         public Migrations(IContentDefinitionManager contentDefinitionManager)
         {
@@ -18,20 +18,26 @@ namespace OrchardCore.Flows
         {
             _contentDefinitionManager.AlterPartDefinition("FlowPart", builder => builder
                 .Attachable()
-                .WithDescription("Provides a customizable body for your content item."));
+                .WithDescription("Provides a customizable body for your content item where you can build a content structure with widgets."));
 
-            return 1;
+            _contentDefinitionManager.AlterPartDefinition("BagPart", builder => builder
+                .Attachable()
+                .Reusable()
+                .WithDescription("Provides a collection behavior for your content item where you can place other content items."));
+
+            // Shortcut other migration steps on new content definition schemas.
+            return 3;
         }
 
+        // This code can be removed in a later version.
         public int UpdateFrom1()
         {
             _contentDefinitionManager.AlterPartDefinition("BagPart", builder => builder
                 .Attachable()
                 .Reusable()
-                .WithDescription("Provides a collection behavior for your content item."));
+                .WithDescription("Provides a collection behavior for your content item where you can place other content items."));
 
-            // Return 3 to shortcut the third migration on new content definition schemas.
-            return 3;
+            return 2;
         }
 
         // Migrate PartSettings. This only needs to run on old content definition schemas.

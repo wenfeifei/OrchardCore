@@ -15,7 +15,7 @@ namespace OrchardCore.Navigation
                 .OnDisplaying(displaying =>
                 {
                     var menu = displaying.Shape;
-                    string menuName = menu.MenuName;
+                    var menuName = menu.GetProperty<string>("MenuName");
 
                     menu.Classes.Add("menu-" + menuName.HtmlClassify());
                     menu.Classes.Add("menu");
@@ -24,13 +24,13 @@ namespace OrchardCore.Navigation
                 .OnProcessing(async context =>
                 {
                     var menu = context.Shape;
-                    string menuName = menu.MenuName;
+                    var menuName = menu.GetProperty<string>("MenuName");
 
                     // Menu population is executed when processing the shape so that its value
                     // can be cached. IShapeDisplayEvents is called before the ShapeDescriptor
                     // events and thus this code can be cached.
 
-                    if ((bool)menu.HasItems)
+                    if (menu.GetProperty<bool>("HasItems"))
                     {
                         return;
                     }
@@ -47,7 +47,7 @@ namespace OrchardCore.Navigation
                     if (httpContext != null)
                     {
                         // adding query string parameters
-                        var route = menu.RouteData;
+                        var route = menu.GetProperty<RouteData>("RouteData");
                         var routeData = new RouteValueDictionary(route.Values);
                         var query = httpContext.Request.Query;
 
@@ -71,9 +71,9 @@ namespace OrchardCore.Navigation
                 .OnDisplaying(displaying =>
                 {
                     var menuItem = displaying.Shape;
-                    var menu = menuItem.Menu;
-                    string menuName = menu.MenuName;
-                    int level = menuItem.Level;
+                    var menu = menuItem.GetProperty<IShape>("Menu");
+                    var menuName = menu.GetProperty<string>("MenuName");
+                    var level = menuItem.GetProperty<int>("Level");
 
                     menuItem.Metadata.Alternates.Add("NavigationItem__level__" + level);
                     menuItem.Metadata.Alternates.Add("NavigationItem__" + EncodeAlternateElement(menuName));
@@ -84,8 +84,8 @@ namespace OrchardCore.Navigation
                 .OnDisplaying(displaying =>
                 {
                     var menuItem = displaying.Shape;
-                    string menuName = menuItem.Menu.MenuName;
-                    int level = menuItem.Level;
+                    var menuName = menuItem.GetProperty<IShape>("Menu").GetProperty<string>("MenuName");
+                    var level = menuItem.GetProperty<int>("Level");
 
                     menuItem.Metadata.Alternates.Add("NavigationItemLink__level__" + level);
 
@@ -101,9 +101,9 @@ namespace OrchardCore.Navigation
         /// </summary>
         /// <param name="alternateElement"></param>
         /// <returns></returns>
-        private string EncodeAlternateElement(string alternateElement)
+        private static string EncodeAlternateElement(string alternateElement)
         {
-            return alternateElement.Replace("-", "__").Replace(".", "_");
+            return alternateElement.Replace("-", "__").Replace('.', '_');
         }
     }
 }

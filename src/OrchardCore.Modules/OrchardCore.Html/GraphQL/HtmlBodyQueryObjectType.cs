@@ -1,38 +1,68 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 using Fluid;
+using Fluid.Values;
 using GraphQL.Types;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using OrchardCore.Apis.GraphQL;
+using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.Html.Models;
+using OrchardCore.Html.Settings;
 using OrchardCore.Html.ViewModels;
 using OrchardCore.Liquid;
+using OrchardCore.Shortcodes.Services;
+using Shortcodes;
 
 namespace OrchardCore.Html.GraphQL
 {
     public class HtmlBodyQueryObjectType : ObjectGraphType<HtmlBodyPart>
     {
-        public HtmlBodyQueryObjectType(IStringLocalizer<HtmlBodyQueryObjectType> T)
+        public HtmlBodyQueryObjectType(IStringLocalizer<HtmlBodyQueryObjectType> S)
         {
             Name = "HtmlBodyPart";
-            Description = T["Content stored as HTML."];
+            Description = S["Content stored as HTML."];
 
             Field<StringGraphType>()
                 .Name("html")
-                .Description(T["the HTML content"])
-                .ResolveAsync(RenderHtml);
+                .Description(S["the HTML content"])
+                .ResolveLockedAsync(RenderHtml);
         }
 
         private static async Task<object> RenderHtml(ResolveFieldContext<HtmlBodyPart> ctx)
         {
-            var context = (GraphQLContext) ctx.UserContext;
-            var liquidTemplateManager = context.ServiceProvider.GetService<ILiquidTemplateManager>();
+            var serviceProvider = ctx.ResolveServiceProvider();
+            var shortcodeService = serviceProvider.GetRequiredService<IShortcodeService>();
+            var contentDefinitionManager = serviceProvider.GetRequiredService<IContentDefinitionManager>();
 
-            var templateContext = new TemplateContext();
-            templateContext.SetValue("ContentItem", ctx.Source.ContentItem);
-            templateContext.MemberAccessStrategy.Register<HtmlBodyPartViewModel>();
+            var contentTypeDefinition = contentDefinitionManager.GetTypeDefinition(ctx.Source.ContentItem.ContentType);
+            var contentTypePartDefinition = contentTypeDefinition.Parts.FirstOrDefault(x => string.Equals(x.PartDefinition.Name, "HtmlBodyPart"));
+            var settings = contentTypePartDefinition.GetSettings<HtmlBodyPartSettings>();
 
-            return await liquidTemplateManager.RenderAsync(ctx.Source.Html, templateContext);
+            var html = ctx.Source.Html;
+
+            if (!settings.SanitizeHtml)
+            {
+                var model = new HtmlBodyPartViewModel()
+                {
+                    Html = ctx.Source.Html,
+                    HtmlBodyPart = ctx.Source,
+                    ContentItem = ctx.Source.ContentItem
+                };
+                var liquidTemplateManager = serviceProvider.GetRequiredService<ILiquidTemplateManager>();
+                var htmlEncoder = serviceProvider.GetService<HtmlEncoder>();
+
+                html = await liquidTemplateManager.RenderStringAsync(html, htmlEncoder, model, new Dictionary<string, FluidValue> { ["ContentItem"] = new ObjectValue(model.ContentItem) });
+            }
+
+            return await shortcodeService.ProcessAsync(html,
+                new Context
+                {
+                    ["ContentItem"] = ctx.Source.ContentItem,
+                    ["TypePartDefinition"] = contentTypePartDefinition
+                });
         }
     }
 }

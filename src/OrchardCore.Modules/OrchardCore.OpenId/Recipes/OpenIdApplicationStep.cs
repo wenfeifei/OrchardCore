@@ -64,7 +64,7 @@ namespace OrchardCore.OpenId.Recipes
             {
                 descriptor.Permissions.Add(OpenIddictConstants.Permissions.Endpoints.Authorization);
             }
-            if (model.AllowRefreshTokenFlow)
+            if (model.AllowLogoutEndpoint)
             {
                 descriptor.Permissions.Add(OpenIddictConstants.Permissions.Endpoints.Logout);
             }
@@ -73,13 +73,38 @@ namespace OrchardCore.OpenId.Recipes
             {
                 descriptor.Permissions.Add(OpenIddictConstants.Permissions.Endpoints.Token);
             }
+            
+            if (model.AllowAuthorizationCodeFlow)
+            {
+                descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.Code);
+            }
+            if (model.AllowImplicitFlow)
+            {
+                descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.IdToken);
+
+                if (string.Equals(model.Type, OpenIddictConstants.ClientTypes.Public, StringComparison.OrdinalIgnoreCase))
+                {
+                    descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.IdTokenToken);
+                    descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.Token);
+                }
+            }
+            if (model.AllowHybridFlow)
+            {
+                descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.CodeIdToken);
+
+                if (string.Equals(model.Type, OpenIddictConstants.ClientTypes.Public, StringComparison.OrdinalIgnoreCase))
+                {
+                    descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.CodeIdTokenToken);
+                    descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.CodeToken);
+                }
+            }
 
             descriptor.PostLogoutRedirectUris.UnionWith(
-                from uri in model.PostLogoutRedirectUris?.Split(new[] { " " }, StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>()
+                from uri in model.PostLogoutRedirectUris?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>()
                 select new Uri(uri, UriKind.Absolute));
 
             descriptor.RedirectUris.UnionWith(
-                from uri in model.RedirectUris?.Split(new[] { " " }, StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>()
+                from uri in model.RedirectUris?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>()
                 select new Uri(uri, UriKind.Absolute));
 
             descriptor.Roles.UnionWith(model.RoleEntries

@@ -1,7 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <!-- NuGet properties-->
+    <Title>OrchardCore Logging Serilog</Title>
+    <Description>$(OCFrameworkDescription)
+
+    Provides Serilog logging for application.</Description>
+    <PackageTags>$(PackageTags) OrchardCoreFramework Logging</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -9,11 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.AspNetCore" />
-    <PackageReference Include="Serilog.Settings.Configuration" />
-    <PackageReference Include="Serilog.Sinks.Console" />
-    <PackageReference Include="Serilog.Sinks.RollingFile" />
   </ItemGroup>
 
   <ItemGroup>

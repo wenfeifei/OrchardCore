@@ -3,12 +3,15 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using OrchardCore.DisplayManagement.Handlers;
 using OrchardCore.Facebook.Drivers;
 using OrchardCore.Facebook.Filters;
+using OrchardCore.Facebook.Recipes;
 using OrchardCore.Facebook.Services;
 using OrchardCore.Modules;
 using OrchardCore.Navigation;
+using OrchardCore.Recipes;
 using OrchardCore.ResourceManagement;
 using OrchardCore.Security.Permissions;
 using OrchardCore.Settings;
@@ -29,14 +32,14 @@ namespace OrchardCore.Facebook
 
             services.AddSingleton<IFacebookService, FacebookService>();
             services.AddScoped<IDisplayDriver<ISite>, FacebookSettingsDisplayDriver>();
+            services.AddRecipeExecutionStep<FacebookSettingsStep>();
 
-            services.AddScoped<IResourceManifestProvider, ResourceManifest>();
+            services.AddTransient<IConfigureOptions<ResourceManagementOptions>, ResourceManagementOptionsConfiguration>();
 
             services.Configure<MvcOptions>((options) =>
             {
                 options.Filters.Add(typeof(FBInitFilter));
             });
-
         }
     }
 }

@@ -64,22 +64,26 @@ namespace OrchardCore.DisplayManagement.Shapes
             return true;
         }
 
+        public virtual bool TryGetIndexImpl(string name, out object result)
+        {
+            if (name != null && TryGetMemberImpl(name, out result))
+            {
+                return true;
+            }
+            else
+            {
+                result = null;
+                return false;
+            }
+        }
+
         public override bool TryGetIndex(GetIndexBinder binder, object[] indexes, out object result)
         {
             if (indexes.Length == 1)
             {
                 var stringIndex = indexes[0] as string;
 
-                if (stringIndex != null && TryGetMemberImpl(stringIndex, out result))
-                {
-                    return true;
-                }
-                else
-                {
-                    // Returning false results in a RuntimeBinderException if the index supplied is not an existing string property name.
-                    result = null;
-                    return false;
-                }
+                return TryGetIndexImpl(stringIndex, out result);
             }
             // Returning false results in a RuntimeBinderException if the index supplied is not an existing string property name.
             result = null;
@@ -152,7 +156,7 @@ namespace OrchardCore.DisplayManagement.Shapes
 
     public class Nil : DynamicObject
     {
-        static readonly Nil Singleton = new Nil();
+        private static readonly Nil Singleton = new Nil();
         public static Nil Instance { get { return Singleton; } }
 
         private Nil()
@@ -176,7 +180,6 @@ namespace OrchardCore.DisplayManagement.Shapes
             result = Nil.Instance;
             return true;
         }
-
 
         public override bool TryBinaryOperation(BinaryOperationBinder binder, object arg, out object result)
         {

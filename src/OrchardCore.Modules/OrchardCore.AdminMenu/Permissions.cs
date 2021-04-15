@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using OrchardCore.Security.Permissions;
+using OrchardCore.AdminMenu.Services;
 
 namespace OrchardCore.AdminMenu
 {
@@ -24,7 +25,7 @@ namespace OrchardCore.AdminMenu
         {
             var list = new List<Permission> { ManageAdminMenu, ViewAdminMenuAll };
 
-            foreach (var adminMenu in await _adminMenuService.GetAsync())
+            foreach (var adminMenu in (await _adminMenuService.GetAdminMenuListAsync()).AdminMenu)
             {
                 list.Add(CreatePermissionForAdminMenu(adminMenu.Name));
             }

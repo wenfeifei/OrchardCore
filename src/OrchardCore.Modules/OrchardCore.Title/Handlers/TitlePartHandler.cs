@@ -1,12 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Fluid;
+using Fluid.Values;
 using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Handlers;
 using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.Liquid;
 using OrchardCore.Title.Models;
+using OrchardCore.Title.ViewModels;
 
 namespace OrchardCore.Title.Handlers
 {
@@ -23,7 +26,6 @@ namespace OrchardCore.Title.Handlers
             _contentDefinitionManager = contentDefinitionManager;
         }
 
-
         public override async Task UpdatedAsync(UpdateContentContext context, TitlePart part)
         {
             var settings = GetSettings(part);
@@ -35,10 +37,16 @@ namespace OrchardCore.Title.Handlers
 
             if (!String.IsNullOrEmpty(settings.Pattern))
             {
-                var templateContext = new TemplateContext();
-                templateContext.SetValue("ContentItem", part.ContentItem);
+                var model = new TitlePartViewModel()
+                {
+                    Title = part.Title,
+                    TitlePart = part,
+                    ContentItem = part.ContentItem
+                };
 
-                var title = await _liquidTemplateManager.RenderAsync(settings.Pattern, NullEncoder.Default, templateContext);
+                var title = await _liquidTemplateManager.RenderStringAsync(settings.Pattern, NullEncoder.Default, model,
+                    new Dictionary<string, FluidValue>() { ["ContentItem"] = new ObjectValue(model.ContentItem) });
+
                 title = title.Replace("\r", String.Empty).Replace("\n", String.Empty);
 
                 part.Title = title;
@@ -50,7 +58,7 @@ namespace OrchardCore.Title.Handlers
         private TitlePartSettings GetSettings(TitlePart part)
         {
             var contentTypeDefinition = _contentDefinitionManager.GetTypeDefinition(part.ContentItem.ContentType);
-            var contentTypePartDefinition = contentTypeDefinition.Parts.FirstOrDefault(x => String.Equals(x.PartDefinition.Name, nameof(TitlePart), StringComparison.Ordinal));
+            var contentTypePartDefinition = contentTypeDefinition.Parts.FirstOrDefault(x => String.Equals(x.PartDefinition.Name, nameof(TitlePart)));
             return contentTypePartDefinition.GetSettings<TitlePartSettings>();
         }
     }

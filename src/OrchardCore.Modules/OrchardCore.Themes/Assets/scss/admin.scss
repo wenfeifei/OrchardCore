@@ -1,12 +1,8 @@
-@import "../../../../../node_modules/bootstrap/scss/functions";
-@import "../../../../../node_modules/bootstrap/scss/variables";
+@import "../../node_modules/bootstrap/scss/functions";
+@import "../../node_modules/bootstrap/scss/variables";
 
 .theme-card {
     margin-bottom: 15px;
-
-    .card-title {
-        margin: 1.25rem;
-    }
 
     .card-theme-thumbnail {
         height: 200px;

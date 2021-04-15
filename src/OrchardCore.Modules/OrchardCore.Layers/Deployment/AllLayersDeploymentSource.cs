@@ -22,15 +22,15 @@ namespace OrchardCore.Layers.Deployment
 
         public async Task ProcessDeploymentStepAsync(DeploymentStep step, DeploymentPlanResult result)
         {
-            var allLayersState = step as AllLayersDeploymentStep;
+            var allLayersStep = step as AllLayersDeploymentStep;
 
-            if (allLayersState == null)
+            if (allLayersStep == null)
             {
                 return;
             }
 
             var layers = await _layerService.GetLayersAsync();
-
+            
             result.Steps.Add(new JObject(
                 new JProperty("name", "Layers"),
                 new JProperty("Layers", layers.Layers.Select(JObject.FromObject))
@@ -44,5 +44,5 @@ namespace OrchardCore.Layers.Deployment
                 new JProperty("LayerSettings", JObject.FromObject(siteSettings.As<LayerSettings>()))
             ));
         }
-    }
+    }   
 }

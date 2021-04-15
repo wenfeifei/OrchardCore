@@ -4,14 +4,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Localization;
 using Microsoft.Extensions.Localization;
 using OrchardCore.Admin;
 using OrchardCore.BackgroundTasks.Services;
 using OrchardCore.BackgroundTasks.ViewModels;
 using OrchardCore.DisplayManagement;
-using OrchardCore.DisplayManagement.ModelBinding;
-using OrchardCore.DisplayManagement.Notify;
 using OrchardCore.Environment.Shell;
 using OrchardCore.Navigation;
 using OrchardCore.Settings;
@@ -19,15 +16,16 @@ using OrchardCore.Settings;
 namespace OrchardCore.BackgroundTasks.Controllers
 {
     [Admin]
-    public class BackgroundTaskController : Controller, IUpdateModel
+    public class BackgroundTaskController : Controller
     {
         private readonly string _tenant;
         private readonly IAuthorizationService _authorizationService;
         private readonly IEnumerable<IBackgroundTask> _backgroundTasks;
         private readonly BackgroundTaskManager _backgroundTaskManager;
         private readonly ISiteService _siteService;
-        private readonly INotifier _notifier;
-        
+        private readonly IStringLocalizer S;
+        private readonly dynamic New;
+
         public BackgroundTaskController(
             ShellSettings shellSettings,
             IAuthorizationService authorizationService,
@@ -35,9 +33,7 @@ namespace OrchardCore.BackgroundTasks.Controllers
             BackgroundTaskManager backgroundTaskManager,
             IShapeFactory shapeFactory,
             ISiteService siteService,
-            IStringLocalizer<BackgroundTaskController> stringLocalizer,
-            IHtmlLocalizer<BackgroundTaskController> htmlLocalizer,
-            INotifier notifier)
+            IStringLocalizer<BackgroundTaskController> stringLocalizer)
         {
             _tenant = shellSettings.Name;
             _authorizationService = authorizationService;
@@ -45,21 +41,14 @@ namespace OrchardCore.BackgroundTasks.Controllers
             _backgroundTaskManager = backgroundTaskManager;
             New = shapeFactory;
             _siteService = siteService;
-            _notifier = notifier;
-            T = stringLocalizer;
-            H = htmlLocalizer;
+            S = stringLocalizer;
         }
-
-        public dynamic New { get; set; }
-
-        public IStringLocalizer T { get; set; }
-        public IHtmlLocalizer H { get; set; }
 
         public async Task<IActionResult> Index(PagerParameters pagerParameters)
         {
             if (!await _authorizationService.AuthorizeAsync(User, Permissions.ManageBackgroundTasks))
             {
-                return Unauthorized();
+                return Forbid();
             }
 
             var siteSettings = await _siteService.GetSiteSettingsAsync();
@@ -95,7 +84,7 @@ namespace OrchardCore.BackgroundTasks.Controllers
         {
             if (!await _authorizationService.AuthorizeAsync(User, Permissions.ManageBackgroundTasks))
             {
-                return Unauthorized();
+                return Forbid();
             }
 
             var model = new BackgroundTaskViewModel() { Name = name };
@@ -110,6 +99,8 @@ namespace OrchardCore.BackgroundTasks.Controllers
                 model.Schedule = settings.Schedule;
                 model.DefaultSchedule = settings.Schedule;
                 model.Description = settings.Description;
+                model.LockTimeout = settings.LockTimeout;
+                model.LockExpiration = settings.LockExpiration;
             }
 
             return View(model);
@@ -120,14 +111,14 @@ namespace OrchardCore.BackgroundTasks.Controllers
         {
             if (!await _authorizationService.AuthorizeAsync(User, Permissions.ManageBackgroundTasks))
             {
-                return Unauthorized();
+                return Forbid();
             }
 
             if (ModelState.IsValid)
             {
                 if (String.IsNullOrWhiteSpace(model.Name))
                 {
-                    ModelState.AddModelError(nameof(BackgroundTaskViewModel.Name), T["The name is mandatory."]);
+                    ModelState.AddModelError(nameof(BackgroundTaskViewModel.Name), S["The name is mandatory."]);
                 }
             }
 
@@ -138,7 +129,9 @@ namespace OrchardCore.BackgroundTasks.Controllers
                     Name = model.Name,
                     Enable = model.Enable,
                     Schedule = model.Schedule?.Trim(),
-                    Description = model.Description
+                    Description = model.Description,
+                    LockTimeout = model.LockTimeout,
+                    LockExpiration = model.LockExpiration
                 };
 
                 await _backgroundTaskManager.UpdateAsync(model.Name, settings);
@@ -153,7 +146,7 @@ namespace OrchardCore.BackgroundTasks.Controllers
         {
             if (!await _authorizationService.AuthorizeAsync(User, Permissions.ManageBackgroundTasks))
             {
-                return Unauthorized();
+                return Forbid();
             }
 
             var document = await _backgroundTaskManager.GetDocumentAsync();
@@ -173,7 +166,9 @@ namespace OrchardCore.BackgroundTasks.Controllers
                 Enable = settings.Enable,
                 Schedule = settings.Schedule,
                 DefaultSchedule = task?.GetDefaultSettings().Schedule,
-                Description = settings.Description
+                Description = settings.Description,
+                LockTimeout = settings.LockTimeout,
+                LockExpiration = settings.LockExpiration
             };
 
             return View(model);
@@ -184,14 +179,14 @@ namespace OrchardCore.BackgroundTasks.Controllers
         {
             if (!await _authorizationService.AuthorizeAsync(User, Permissions.ManageBackgroundTasks))
             {
-                return Unauthorized();
+                return Forbid();
             }
 
             if (ModelState.IsValid)
             {
                 if (String.IsNullOrWhiteSpace(model.Name))
                 {
-                    ModelState.AddModelError(nameof(BackgroundTaskViewModel.Name), T["The name is mandatory."]);
+                    ModelState.AddModelError(nameof(BackgroundTaskViewModel.Name), S["The name is mandatory."]);
                 }
             }
 
@@ -202,7 +197,9 @@ namespace OrchardCore.BackgroundTasks.Controllers
                     Name = model.Name,
                     Enable = model.Enable,
                     Schedule = model.Schedule?.Trim(),
-                    Description = model.Description
+                    Description = model.Description,
+                    LockTimeout = model.LockTimeout,
+                    LockExpiration = model.LockExpiration
                 };
 
                 await _backgroundTaskManager.UpdateAsync(model.Name, settings);
@@ -219,10 +216,10 @@ namespace OrchardCore.BackgroundTasks.Controllers
         {
             if (!await _authorizationService.AuthorizeAsync(User, Permissions.ManageBackgroundTasks))
             {
-                return Unauthorized();
+                return Forbid();
             }
 
-            var document = await _backgroundTaskManager.GetDocumentAsync();
+            var document = await _backgroundTaskManager.LoadDocumentAsync();
 
             if (!document.Settings.ContainsKey(name))
             {
@@ -239,10 +236,10 @@ namespace OrchardCore.BackgroundTasks.Controllers
         {
             if (!await _authorizationService.AuthorizeAsync(User, Permissions.ManageBackgroundTasks))
             {
-                return Unauthorized();
+                return Forbid();
             }
 
-            var document = await _backgroundTaskManager.GetDocumentAsync();
+            var document = await _backgroundTaskManager.LoadDocumentAsync();
 
             if (!document.Settings.TryGetValue(name, out var settings))
             {
@@ -263,10 +260,10 @@ namespace OrchardCore.BackgroundTasks.Controllers
         {
             if (!await _authorizationService.AuthorizeAsync(User, Permissions.ManageBackgroundTasks))
             {
-                return Unauthorized();
+                return Forbid();
             }
 
-            var document = await _backgroundTaskManager.GetDocumentAsync();
+            var document = await _backgroundTaskManager.LoadDocumentAsync();
 
             if (!document.Settings.TryGetValue(name, out var settings))
             {

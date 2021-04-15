@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using GraphQL.Types;
@@ -9,6 +10,7 @@ using OrchardCore.ContentManagement.GraphQL.Queries;
 using OrchardCore.ContentManagement.Records;
 using OrchardCore.Layers.Models;
 using OrchardCore.Layers.Services;
+using OrchardCore.Rules;
 
 namespace OrchardCore.Layers.GraphQL
 {
@@ -19,17 +21,23 @@ namespace OrchardCore.Layers.GraphQL
             Name = "Layer";
 
             Field(layer => layer.Name).Description("The name of the layer.");
-            Field(layer => layer.Rule).Description("The rule that activates the layer.");
+            #pragma warning disable 0618
+            Field(layer => layer.Rule).Description("Deprecated. The rule that activates the layer.");
+            #pragma warning restore 0618
+            Field<ListGraphType<StringGraphType>, IEnumerable<Condition>>()
+                .Name("layerrule")
+                .Description("The rule that activates the layer.")
+                .Resolve(ctx => ctx.Source.LayerRule.Conditions);
             Field(layer => layer.Description).Description("The description of the layer.");
-
-            Field<ListGraphType<LayerWidgetQueryObjectType>>()
+            Field<ListGraphType<LayerWidgetQueryObjectType>, IEnumerable<ContentItem>>()
                 .Name("widgets")
                 .Description("The widgets for this layer.")
                 .Argument<PublicationStatusGraphType, PublicationStatusEnum>("status", "publication status of the widgets")
-                .ResolveAsync(async ctx => {
+                .ResolveLockedAsync(async ctx =>
+                {
                     var context = (GraphQLContext)ctx.UserContext;
                     var layerService = context.ServiceProvider.GetService<ILayerService>();
-                    
+
                     var filter = GetVersionFilter(ctx.GetArgument<PublicationStatusEnum>("status"));
                     var widgets = await layerService.GetLayerWidgetsAsync(filter);
 

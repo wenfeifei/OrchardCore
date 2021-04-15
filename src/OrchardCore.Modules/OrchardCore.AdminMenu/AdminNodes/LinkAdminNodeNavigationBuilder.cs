@@ -1,28 +1,28 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
-using OrchardCore.AdminMenu.Models;
 using OrchardCore.AdminMenu.Services;
-using OrchardCore.AdminMenu.AdminNodes;
 using OrchardCore.Navigation;
-using System.Threading.Tasks;
+using OrchardCore.Security.Services;
 
 namespace OrchardCore.AdminMenu.AdminNodes
 {
     public class LinkAdminNodeNavigationBuilder : IAdminNodeNavigationBuilder
     {
-        private readonly ILogger<LinkAdminNodeNavigationBuilder> _logger;
+        private readonly ILogger _logger;
+        private readonly IAdminMenuPermissionService _adminMenuPermissionService;
 
-        public LinkAdminNodeNavigationBuilder(ILogger<LinkAdminNodeNavigationBuilder> logger)
+
+        public LinkAdminNodeNavigationBuilder(IAdminMenuPermissionService adminMenuPermissionService, ILogger<LinkAdminNodeNavigationBuilder> logger)
         {
+            _adminMenuPermissionService = adminMenuPermissionService;
             _logger = logger;
         }
 
         public string Name => typeof(LinkAdminNode).Name;
-
 
         public Task BuildNavigationAsync(MenuItem menuItem, NavigationBuilder builder, IEnumerable<IAdminNodeNavigationBuilder> treeNodeBuilders)
         {
@@ -33,14 +33,22 @@ namespace OrchardCore.AdminMenu.AdminNodes
                 return Task.CompletedTask;
             }
 
-            return builder.AddAsync(new LocalizedString(node.LinkText, node.LinkText), async itemBuilder => {
-
+            return builder.AddAsync(new LocalizedString(node.LinkText, node.LinkText), async itemBuilder =>
+            {
                 // Add the actual link
                 itemBuilder.Url(node.LinkUrl);
                 itemBuilder.Priority(node.Priority);
                 itemBuilder.Position(node.Position);
 
-                // Add adminNode's IconClass property values to menuItem.Classes. 
+                if (node.PermissionNames.Any())
+                {
+                    var permissions = await _adminMenuPermissionService.GetPermissionsAsync();
+                    // Find the actual permissions and apply them to the menu.
+                    var selectedPermissions = permissions.Where(p => node.PermissionNames.Contains(p.Name));
+                    itemBuilder.Permissions(selectedPermissions);
+                }
+
+                // Add adminNode's IconClass property values to menuItem.Classes.
                 // Add them with a prefix so that later the shape template can extract them to use them on a <i> tag.
                 node.IconClass?.Split(' ').ToList().ForEach(c => itemBuilder.AddClass("icon-class-" + c));
 
@@ -61,7 +69,7 @@ namespace OrchardCore.AdminMenu.AdminNodes
             });
         }
 
-        // Add adminNode's IconClass property values to menuItem.Classes. 
+        // Add adminNode's IconClass property values to menuItem.Classes.
         // Add them with a prefix so that later the shape template can extract them to use them on a <i> tag.
         private void AddIconPickerClassToLink(string iconClass, NavigationItemBuilder itemBuilder)
         {
@@ -69,8 +77,8 @@ namespace OrchardCore.AdminMenu.AdminNodes
             {
                 return;
             }
-            
-            foreach (var c in iconClass.Split(' ' ))
+
+            foreach (var c in iconClass.Split(' '))
             {
                 itemBuilder.AddClass("icon-class-" + c);
             }

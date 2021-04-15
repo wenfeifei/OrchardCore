@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Options;
 using OrchardCore.Data;
+using OrchardCore.Data.Documents;
 using OrchardCore.Data.Migration;
 using OrchardCore.Environment.Shell;
 using OrchardCore.Environment.Shell.Models;
@@ -18,17 +20,23 @@ using YesSql.Provider.SqlServer;
 
 namespace Microsoft.Extensions.DependencyInjection
 {
+    /// <summary>
+    /// Provides extension methods for <see cref="OrchardCoreBuilder"/> to add database access functionality.
+    /// </summary>
     public static class OrchardCoreBuilderExtensions
     {
         /// <summary>
         /// Adds tenant level data access services.
         /// </summary>
+        /// <param name="builder">The <see cref="OrchardCoreBuilder"/>.</param>
         public static OrchardCoreBuilder AddDataAccess(this OrchardCoreBuilder builder)
         {
             builder.ConfigureServices(services =>
             {
                 services.AddScoped<IDataMigrationManager, DataMigrationManager>();
                 services.AddScoped<IModularTenantEvents, AutomaticDataMigrations>();
+
+                services.AddOptions<StoreCollectionOptions>();
 
                 // Adding supported databases
                 services.TryAddDataProvider(name: "Sql Server", value: "SqlConnection", hasConnectionString: true, sampleConnectionString: "Server=localhost;Database=Orchard;User Id=username;Password=password", hasTablePrefix: true, isDefault: false);
@@ -38,7 +46,7 @@ namespace Microsoft.Extensions.DependencyInjection
 
                 // Configuring data access
 
-                services.AddSingleton<IStore>(sp =>
+                services.AddSingleton(sp =>
                 {
                     var shellSettings = sp.GetService<ShellSettings>();
 
@@ -86,7 +94,13 @@ namespace Microsoft.Extensions.DependencyInjection
                         storeConfiguration = storeConfiguration.SetTablePrefix(shellSettings["TablePrefix"] + "_");
                     }
 
-                    var store = StoreFactory.CreateAsync(storeConfiguration).GetAwaiter().GetResult();
+                    var store = StoreFactory.CreateAndInitializeAsync(storeConfiguration).GetAwaiter().GetResult();
+                    var options = sp.GetService<IOptions<StoreCollectionOptions>>().Value;
+                    foreach (var collection in options.Collections)
+                    {
+                        store.InitializeCollectionAsync(collection).GetAwaiter().GetResult();
+                    }
+
                     var indexes = sp.GetServices<IIndexProvider>();
 
                     store.RegisterIndexes(indexes);
@@ -111,11 +125,16 @@ namespace Microsoft.Extensions.DependencyInjection
 
                     ShellScope.RegisterBeforeDispose(scope =>
                     {
-                        return session.CommitAsync();
+                        return scope.ServiceProvider
+                            .GetRequiredService<IDocumentStore>()
+                            .CommitAsync();
                     });
 
                     return session;
                 });
+
+                services.AddScoped<IDocumentStore, DocumentStore>();
+                services.AddSingleton<IFileDocumentStore, FileDocumentStore>();
 
                 services.AddTransient<IDbConnectionAccessor, DbConnectionAccessor>();
             });

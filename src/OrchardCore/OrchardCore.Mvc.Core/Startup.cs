@@ -1,9 +1,11 @@
 using System;
 using System.IO;
+using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.AspNetCore.Mvc.Razor.Compilation;
@@ -12,11 +14,13 @@ using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OrchardCore.Modules;
 using OrchardCore.Mvc.LocationExpander;
 using OrchardCore.Mvc.ModelBinding;
 using OrchardCore.Mvc.RazorPages;
+using OrchardCore.Mvc.Routing;
 using OrchardCore.Routing;
 
 namespace OrchardCore.Mvc
@@ -26,17 +30,41 @@ namespace OrchardCore.Mvc
         public override int Order => -1000;
         public override int ConfigureOrder => 1000;
 
+        private readonly IHostEnvironment _hostingEnvironment;
         private readonly IServiceProvider _serviceProvider;
 
-        public Startup(IServiceProvider serviceProvider)
+        public Startup(IHostEnvironment hostingEnvironment, IServiceProvider serviceProvider)
         {
+            _hostingEnvironment = hostingEnvironment;
             _serviceProvider = serviceProvider;
         }
 
         public override void Configure(IApplicationBuilder app, IEndpointRouteBuilder routes, IServiceProvider serviceProvider)
         {
-            // The default route is added to each tenant as a template route.
-            routes.MapControllerRoute("Default", "{area:exists}/{controller}/{action}/{id?}");
+            var descriptors = serviceProvider.GetRequiredService<IActionDescriptorCollectionProvider>()
+                .ActionDescriptors.Items
+                .OfType<ControllerActionDescriptor>()
+                .ToArray()
+                ;
+
+            var mappers = serviceProvider.GetServices<IAreaControllerRouteMapper>().OrderBy(x => x.Order);
+
+            foreach (var descriptor in descriptors)
+            {
+                if (!descriptor.RouteValues.ContainsKey("area"))
+                {
+                    continue;
+                }
+
+                foreach (var mapper in mappers)
+                {
+                    if (mapper.TryMapAreaControllerRoute(routes, descriptor))
+                    {
+                        break;
+                    }
+                }
+            }
+
             routes.MapRazorPages();
         }
 
@@ -76,10 +104,10 @@ namespace OrchardCore.Mvc
             services.TryAddEnumerable(
                 ServiceDescriptor.Transient<IConfigureOptions<RazorViewEngineOptions>, ModularRazorViewEngineOptionsSetup>());
 
-            // Support razor runtime compilation only if the 'refs' folder exists.
+            // Support razor runtime compilation only if in dev mode and if the 'refs' folder exists.
             var refsFolderExists = Directory.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "refs"));
 
-            if (refsFolderExists)
+            if (_hostingEnvironment.IsDevelopment() && refsFolderExists)
             {
                 builder.AddRazorRuntimeCompilation();
 
@@ -96,6 +124,9 @@ namespace OrchardCore.Mvc
 
             // Use a custom 'IFileVersionProvider' that also lookup all tenant level 'IStaticFileProvider'.
             services.Replace(ServiceDescriptor.Singleton<IFileVersionProvider, ShellFileVersionProvider>());
+
+            // Register a DefaultAreaControllerRouteMapper that will run last.
+            services.AddTransient<IAreaControllerRouteMapper, DefaultAreaControllerRouteMapper>();
 
             AddMvcModuleCoreServices(services);
         }

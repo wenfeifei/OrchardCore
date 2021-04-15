@@ -52,10 +52,10 @@ namespace OrchardCore.ContentManagement.GraphQL.Options
             return this;
         }
 
-        public GraphQLContentOptions IgnoreField<IGraphType>(string fieldName) where IGraphType : IObjectGraphType
+        public GraphQLContentOptions IgnoreField<TGraphType>(string fieldName) where TGraphType : IObjectGraphType
         {
             HiddenFields = HiddenFields.Union(new[] {
-                new GraphQLField<IGraphType>(fieldName),
+                new GraphQLField<TGraphType>(fieldName),
             });
 
             return this;
@@ -71,7 +71,7 @@ namespace OrchardCore.ContentManagement.GraphQL.Options
         }
 
         /// <summary>
-        /// Collapsing works at a heirachy
+        /// Collapsing works at a hierarchy
         ///
         /// If the Content Type is marked at collapsed, then all parts are collapsed.
         /// If the Content Type is not marked collapsed, then it falls down to the content type under it.

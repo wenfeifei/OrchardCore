@@ -2,53 +2,62 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using GraphQL.Resolvers;
 using GraphQL.Types;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
-using Microsoft.Extensions.Primitives;
 using OrchardCore.Apis.GraphQL;
+using OrchardCore.Apis.GraphQL.Resolvers;
 
 namespace OrchardCore.Localization.GraphQL
 {
+    /// <summary>
+    /// Represents a site cultures for Graph QL.
+    /// </summary>
     public class SiteCulturesQuery : ISchemaBuilder
     {
+        private readonly IStringLocalizer S;
+
+        /// <summary>
+        /// Creates a new instance of the <see cref="SiteCulturesQuery"/>.
+        /// </summary>
+        /// <param name="localizer">The <see cref="IStringLocalizer"/>.</param>
         public SiteCulturesQuery(IStringLocalizer<SiteCulturesQuery> localizer)
         {
-            T = localizer;
+            S = localizer;
         }
 
-        public IStringLocalizer T { get; set; }
+        public Task<string> GetIdentifierAsync() => Task.FromResult(String.Empty);
 
-        public Task<IChangeToken> BuildAsync(ISchema schema)
+        /// <inheritdocs/>
+        public Task BuildAsync(ISchema schema)
         {
             var field = new FieldType
             {
                 Name = "SiteCultures",
-                Description = T["The active cultures configured for the site."],
+                Description = S["The active cultures configured for the site."],
                 Type = typeof(ListGraphType<CultureQueryObjectType>),
-                Resolver = new AsyncFieldResolver<IEnumerable<SiteCulture>>(ResolveAsync)
+                Resolver = new LockedAsyncFieldResolver<IEnumerable<SiteCulture>>(ResolveAsync)
             };
 
             schema.Query.AddField(field);
 
-            return Task.FromResult<IChangeToken>(null);
+            return Task.CompletedTask;
         }
 
         private async Task<IEnumerable<SiteCulture>> ResolveAsync(ResolveFieldContext resolveContext)
         {
-            var context = (GraphQLContext)resolveContext.UserContext;
-            var localizationService = context.ServiceProvider.GetService<ILocalizationService>();
+            var localizationService = resolveContext.ResolveServiceProvider().GetService<ILocalizationService>();
 
             var defaultCulture = await localizationService.GetDefaultCultureAsync();
             var supportedCultures = await localizationService.GetSupportedCulturesAsync();
 
-             var cultures = supportedCultures.Select(culture =>
-                new SiteCulture {
-                    Culture = culture,
-                    IsDefault = string.Equals(defaultCulture, culture, StringComparison.OrdinalIgnoreCase)
-                }
-            );
+            var cultures = supportedCultures.Select(culture =>
+               new SiteCulture
+               {
+                   Culture = culture,
+                   IsDefault = string.Equals(defaultCulture, culture, StringComparison.OrdinalIgnoreCase)
+               }
+           );
 
             return cultures;
         }

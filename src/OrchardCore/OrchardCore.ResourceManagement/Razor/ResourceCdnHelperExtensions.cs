@@ -17,14 +17,7 @@ public static class ResourceCdnHelperExtensions
 
         if (resourcePath.StartsWith("~/", StringComparison.Ordinal))
         {
-            if (!String.IsNullOrEmpty(orchardHelper.HttpContext.Request.PathBase))
-            {
-                resourcePath = orchardHelper.HttpContext.Request.PathBase + resourcePath.Substring(1);
-            }
-            else
-            {
-                resourcePath = resourcePath.Substring(1);
-            }
+            resourcePath = orchardHelper.HttpContext.Request.PathBase.Add(resourcePath.Substring(1)).Value;
         }
 
         // If append version is set, allow it to override the site setting.
@@ -34,10 +27,13 @@ public static class ResourceCdnHelperExtensions
             resourcePath = fileVersionProvider.AddFileVersionToPath(orchardHelper.HttpContext.Request.PathBase, resourcePath);
         }
 
-        // Don't prefix cdn if the path is absolute, or is in debug mode.
-        if (!options.DebugMode
-            && !String.IsNullOrEmpty(options.CdnBaseUrl)
-            && !Uri.TryCreate(resourcePath, UriKind.Absolute, out var uri))
+        // Don't prefix cdn if the path includes a protocol, i.e. is an external url, or is in debug mode.
+        if (!options.DebugMode && !String.IsNullOrEmpty(options.CdnBaseUrl) &&
+            // Don't evaluate with Uri.TryCreate as it produces incorrect results on Linux.
+            !resourcePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+            !resourcePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !resourcePath.StartsWith("//", StringComparison.OrdinalIgnoreCase) &&
+            !resourcePath.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
         {
             resourcePath = options.CdnBaseUrl + resourcePath;
         }

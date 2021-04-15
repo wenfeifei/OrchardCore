@@ -2,23 +2,24 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OrchardCore.Deployment;
+using OrchardCore.AdminMenu.Services;
 
 namespace OrchardCore.AdminMenu.Deployment
 {
     public class AdminMenuDeploymentSource : IDeploymentSource
     {
-        private readonly IAdminMenuService _AdminMenuService;
+        private readonly IAdminMenuService _adminMenuService;
 
-        public AdminMenuDeploymentSource(IAdminMenuService AdminMenuervice)
+        public AdminMenuDeploymentSource(IAdminMenuService adminMenuService)
         {
-            _AdminMenuService = AdminMenuervice;
+            _adminMenuService = adminMenuService;
         }
 
         public async Task ProcessDeploymentStepAsync(DeploymentStep step, DeploymentPlanResult result)
         {
-            var AdminMenuState = step as AdminMenuDeploymentStep;
+            var adminMenuStep = step as AdminMenuDeploymentStep;
 
-            if (AdminMenuState == null)
+            if (adminMenuStep == null)
             {
                 return;
             }
@@ -30,11 +31,11 @@ namespace OrchardCore.AdminMenu.Deployment
             ));
 
             // For each AdminNode, store info about its concrete type: linkAdminNode, contentTypesAdminNode etc...
-            var serializer = new JsonSerializer() {  TypeNameHandling = TypeNameHandling.Auto };
+            var serializer = new JsonSerializer() { TypeNameHandling = TypeNameHandling.Auto };
 
-            foreach (var adminMenu in await _AdminMenuService.GetAsync())
+            foreach (var adminMenu in (await _adminMenuService.GetAdminMenuListAsync()).AdminMenu)
             {
-                var objectData = JObject.FromObject(adminMenu, serializer);                
+                var objectData = JObject.FromObject(adminMenu, serializer);
                 data.Add(objectData);
             }
 

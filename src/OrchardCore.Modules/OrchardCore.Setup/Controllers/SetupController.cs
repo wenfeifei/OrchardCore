@@ -3,11 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using OrchardCore.Abstractions.Setup;
 using OrchardCore.Data;
+using OrchardCore.Email;
 using OrchardCore.Environment.Shell;
 using OrchardCore.Modules;
 using OrchardCore.Recipes.Models;
@@ -18,33 +22,37 @@ namespace OrchardCore.Setup.Controllers
 {
     public class SetupController : Controller
     {
+        private readonly IClock _clock;
         private readonly ISetupService _setupService;
         private readonly ShellSettings _shellSettings;
         private readonly IShellHost _shellHost;
+        private IdentityOptions _identityOptions;
+        private readonly IEmailAddressValidator _emailAddressValidator;
         private readonly IEnumerable<DatabaseProvider> _databaseProviders;
-        private readonly IClock _clock;
-        private readonly ILogger<SetupController> _logger;
+        private readonly ILogger _logger;
+        private readonly IStringLocalizer S;
 
         public SetupController(
-            ILogger<SetupController> logger,
             IClock clock,
             ISetupService setupService,
             ShellSettings shellSettings,
-            IEnumerable<DatabaseProvider> databaseProviders,
             IShellHost shellHost,
-            IStringLocalizer<SetupController> t)
+            IOptions<IdentityOptions> identityOptions,
+            IEmailAddressValidator emailAddressValidator,
+            IEnumerable<DatabaseProvider> databaseProviders,
+            IStringLocalizer<SetupController> localizer,
+            ILogger<SetupController> logger)
         {
-            _logger = logger;
             _clock = clock;
-            _shellHost = shellHost;
             _setupService = setupService;
             _shellSettings = shellSettings;
+            _shellHost = shellHost;
+            _identityOptions = identityOptions.Value;
+            _emailAddressValidator = emailAddressValidator;
             _databaseProviders = databaseProviders;
-
-            T = t;
+            _logger = logger;
+            S = localizer;
         }
-
-        public IStringLocalizer T { get; set; }
 
         public async Task<ActionResult> Index(string token)
         {
@@ -100,18 +108,18 @@ namespace OrchardCore.Setup.Controllers
             {
                 if (selectedProvider != null && selectedProvider.HasConnectionString && String.IsNullOrWhiteSpace(model.ConnectionString))
                 {
-                    ModelState.AddModelError(nameof(model.ConnectionString), T["The connection string is mandatory for this provider."]);
+                    ModelState.AddModelError(nameof(model.ConnectionString), S["The connection string is mandatory for this provider."]);
                 }
             }
 
             if (String.IsNullOrEmpty(model.Password))
             {
-                ModelState.AddModelError(nameof(model.Password), T["The password is required."]);
+                ModelState.AddModelError(nameof(model.Password), S["The password is required."]);
             }
 
             if (model.Password != model.PasswordConfirmation)
             {
-                ModelState.AddModelError(nameof(model.PasswordConfirmation), T["The password confirmation doesn't match the password."]);
+                ModelState.AddModelError(nameof(model.PasswordConfirmation), S["The password confirmation doesn't match the password."]);
             }
 
             RecipeDescriptor selectedRecipe = null;
@@ -120,12 +128,23 @@ namespace OrchardCore.Setup.Controllers
                 selectedRecipe = model.Recipes.FirstOrDefault(x => x.Name == _shellSettings["RecipeName"]);
                 if (selectedRecipe == null)
                 {
-                    ModelState.AddModelError(nameof(model.RecipeName), T["Invalid recipe."]);
+                    ModelState.AddModelError(nameof(model.RecipeName), S["Invalid recipe."]);
                 }
             }
             else if (String.IsNullOrEmpty(model.RecipeName) || (selectedRecipe = model.Recipes.FirstOrDefault(x => x.Name == model.RecipeName)) == null)
             {
-                ModelState.AddModelError(nameof(model.RecipeName), T["Invalid recipe."]);
+                ModelState.AddModelError(nameof(model.RecipeName), S["Invalid recipe."]);
+            }
+
+            // Only add additional errors if attribute validation has passed.
+            if (!String.IsNullOrEmpty(model.Email) && !_emailAddressValidator.Validate(model.Email))
+            {
+                ModelState.AddModelError(nameof(model.Email), S["The email is invalid."]);
+            }
+
+            if (!String.IsNullOrEmpty(model.UserName) && model.UserName.Any(c => !_identityOptions.User.AllowedUserNameCharacters.Contains(c)))
+            {
+                ModelState.AddModelError(nameof(model.UserName), S["User name '{0}' is invalid, can only contain letters or digits.", model.UserName]);
             }
 
             if (!ModelState.IsValid)
@@ -137,27 +156,30 @@ namespace OrchardCore.Setup.Controllers
             var setupContext = new SetupContext
             {
                 ShellSettings = _shellSettings,
-                SiteName = model.SiteName,
                 EnabledFeatures = null, // default list,
-                AdminUsername = model.UserName,
-                AdminEmail = model.Email,
-                AdminPassword = model.Password,
                 Errors = new Dictionary<string, string>(),
                 Recipe = selectedRecipe,
-                SiteTimeZone = model.SiteTimeZone
+                Properties = new Dictionary<string, object>
+                {
+                    { SetupConstants.SiteName, model.SiteName },
+                    { SetupConstants.AdminUsername, model.UserName },
+                    { SetupConstants.AdminEmail, model.Email },
+                    { SetupConstants.AdminPassword, model.Password },
+                    { SetupConstants.SiteTimeZone, model.SiteTimeZone },
+                }
             };
 
             if (!string.IsNullOrEmpty(_shellSettings["ConnectionString"]))
             {
-                setupContext.DatabaseProvider = _shellSettings["DatabaseProvider"];
-                setupContext.DatabaseConnectionString = _shellSettings["ConnectionString"];
-                setupContext.DatabaseTablePrefix = _shellSettings["TablePrefix"];
+                setupContext.Properties[SetupConstants.DatabaseProvider] = _shellSettings["DatabaseProvider"];
+                setupContext.Properties[SetupConstants.DatabaseConnectionString] = _shellSettings["ConnectionString"];
+                setupContext.Properties[SetupConstants.DatabaseTablePrefix] = _shellSettings["TablePrefix"];
             }
             else
             {
-                setupContext.DatabaseProvider = model.DatabaseProvider;
-                setupContext.DatabaseConnectionString = model.ConnectionString;
-                setupContext.DatabaseTablePrefix = model.TablePrefix;
+                setupContext.Properties[SetupConstants.DatabaseProvider] = model.DatabaseProvider;
+                setupContext.Properties[SetupConstants.DatabaseConnectionString] = model.ConnectionString;
+                setupContext.Properties[SetupConstants.DatabaseTablePrefix] = model.TablePrefix;
             }
 
             var executionId = await _setupService.SetupAsync(setupContext);
@@ -198,6 +220,11 @@ namespace OrchardCore.Setup.Controllers
             else
             {
                 model.DatabaseProvider = model.DatabaseProviders.FirstOrDefault(p => p.IsDefault)?.Value;
+            }
+
+            if (!String.IsNullOrEmpty(_shellSettings["Description"]))
+            {
+                model.Description = _shellSettings["Description"];
             }
         }
 

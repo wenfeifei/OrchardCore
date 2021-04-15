@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authentication.Facebook;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OrchardCore.Environment.Shell;
+using OrchardCore.Environment.Shell.Models;
 using OrchardCore.Facebook.Login.Services;
 using OrchardCore.Facebook.Login.Settings;
 using OrchardCore.Facebook.Services;
@@ -24,17 +26,20 @@ namespace OrchardCore.Facebook.Login.Configuration
         private readonly IFacebookService _coreService;
         private readonly IFacebookLoginService _loginService;
         private readonly IDataProtectionProvider _dataProtectionProvider;
-        private readonly ILogger<FacebookLoginConfiguration> _logger;
+        private readonly ShellSettings _shellSettings;
+        private readonly ILogger _logger;
 
         public FacebookLoginConfiguration(
             IFacebookService coreService,
             IFacebookLoginService loginService,
             IDataProtectionProvider dataProtectionProvider,
+            ShellSettings shellSettings,
             ILogger<FacebookLoginConfiguration> logger)
         {
             _coreService = coreService;
             _loginService = loginService;
             _dataProtectionProvider = dataProtectionProvider;
+            _shellSettings = shellSettings;
             _logger = logger;
         }
 
@@ -63,7 +68,7 @@ namespace OrchardCore.Facebook.Login.Configuration
         public void Configure(string name, FacebookOptions options)
         {
             // Ignore OpenID Connect client handler instances that don't correspond to the instance managed by the OpenID module.
-            if (!string.Equals(name, FacebookDefaults.AuthenticationScheme, StringComparison.Ordinal))
+            if (!String.Equals(name, FacebookDefaults.AuthenticationScheme))
             {
                 return;
             }
@@ -79,6 +84,7 @@ namespace OrchardCore.Facebook.Login.Configuration
             {
                 return;
             }
+
             options.AppId = coreSettings.AppId;
 
             try
@@ -87,13 +93,15 @@ namespace OrchardCore.Facebook.Login.Configuration
             }
             catch
             {
-                _logger.LogError("The Facebook secret keycould not be decrypted. It may have been encrypted using a different key.");
+                _logger.LogError("The Facebook secret key could not be decrypted. It may have been encrypted using a different key.");
             }
 
             if (loginSettings.CallbackPath.HasValue)
             {
                 options.CallbackPath = loginSettings.CallbackPath;
             }
+
+            options.SaveTokens = loginSettings.SaveTokens;
         }
 
         public void Configure(FacebookOptions options) => Debug.Fail("This infrastructure method shouldn't be called.");
@@ -107,6 +115,7 @@ namespace OrchardCore.Facebook.Login.Configuration
 
                 return null;
             }
+
             return settings;
         }
 
@@ -115,13 +124,15 @@ namespace OrchardCore.Facebook.Login.Configuration
             var settings = await _coreService.GetSettingsAsync();
             if ((await _coreService.ValidateSettingsAsync(settings)).Any(result => result != ValidationResult.Success))
             {
-                _logger.LogWarning("The Facebook Core module is not correctly configured.");
+                if (_shellSettings.State == TenantState.Running)
+                {
+                    _logger.LogWarning("The Facebook Core module is not correctly configured.");
+                }
 
                 return null;
             }
 
             return settings;
         }
-
     }
 }

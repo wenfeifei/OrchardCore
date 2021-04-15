@@ -22,27 +22,27 @@ namespace OrchardCore.Https.Drivers
         private readonly INotifier _notifier;
         private readonly IShellHost _shellHost;
         private readonly ShellSettings _shellSettings;
-        private readonly IHtmlLocalizer T;
+        private readonly IHtmlLocalizer H;
 
         public HttpsSettingsDisplayDriver(IHttpContextAccessor httpContextAccessor,
             IAuthorizationService authorizationService,
             INotifier notifier,
             IShellHost shellHost,
             ShellSettings shellSettings,
-            IHtmlLocalizer<HttpsSettingsDisplayDriver> stringLocalizer)
+            IHtmlLocalizer<HttpsSettingsDisplayDriver> htmlLocalizer)
         {
             _httpContextAccessor = httpContextAccessor;
             _authorizationService = authorizationService;
             _notifier = notifier;
             _shellHost = shellHost;
             _shellSettings = shellSettings;
-            T = stringLocalizer;
+            H = htmlLocalizer;
         }
 
         public override async Task<IDisplayResult> EditAsync(HttpsSettings settings, BuildEditorContext context)
         {
             var user = _httpContextAccessor.HttpContext?.User;
-            if (user == null || !await _authorizationService.AuthorizeAsync(user, Permissions.ManageHttps))
+            if (!await _authorizationService.AuthorizeAsync(user, Permissions.ManageHttps))
             {
                 return null;
             }
@@ -52,7 +52,7 @@ namespace OrchardCore.Https.Drivers
                 var isHttpsRequest = _httpContextAccessor.HttpContext.Request.IsHttps;
 
                 if (!isHttpsRequest)
-                    _notifier.Warning(T["For safety, Enabling require HTTPS over HTTP has been prevented."]);
+                    _notifier.Warning(H["For safety, Enabling require HTTPS over HTTP has been prevented."]);
 
                 model.EnableStrictTransportSecurity = settings.EnableStrictTransportSecurity;
                 model.IsHttpsRequest = isHttpsRequest;
@@ -69,6 +69,12 @@ namespace OrchardCore.Https.Drivers
         {
             if (context.GroupId == SettingsGroupId)
             {
+                var user = _httpContextAccessor.HttpContext?.User;
+                if (!await _authorizationService.AuthorizeAsync(user, Permissions.ManageHttps))
+                {
+                    return null;
+                }
+
                 var model = new HttpsSettingsViewModel();
 
                 await context.Updater.TryUpdateModelAsync(model, Prefix);
@@ -78,10 +84,10 @@ namespace OrchardCore.Https.Drivers
                 settings.RequireHttpsPermanent = model.RequireHttpsPermanent;
                 settings.SslPort = model.SslPort;
 
-                // If the settings are valid, reload the current tenant.
+                // If the settings are valid, release the current tenant.
                 if (context.Updater.ModelState.IsValid)
                 {
-                    await _shellHost.ReloadShellContextAsync(_shellSettings);
+                    await _shellHost.ReleaseShellContextAsync(_shellSettings);
                 }
             }
 

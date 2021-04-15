@@ -1,22 +1,22 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using OrchardCore.ContentManagement;
-using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.ContentManagement.Metadata;
+using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.ContentManagement.Records;
 using OrchardCore.Data.Migration;
-using Newtonsoft.Json.Linq;
 using YesSql;
-using Microsoft.Extensions.Logging;
 
 namespace OrchardCore.Title
 {
     public class Migrations : DataMigration
     {
-        IContentDefinitionManager _contentDefinitionManager;
+        private IContentDefinitionManager _contentDefinitionManager;
         private readonly ISession _session;
-        private readonly ILogger<Migrations> _logger;
+        private readonly ILogger _logger;
 
         public Migrations(
             IContentDefinitionManager contentDefinitionManager,
@@ -36,12 +36,13 @@ namespace OrchardCore.Title
                 .WithDefaultPosition("0")
                 );
 
+            // Shortcut other migration steps on new content definition schemas.
             return 2;
         }
 
+        // This code can be removed in a later version.
         public async Task<int> UpdateFrom1()
         {
-            // This code can be removed in RC
             // We are patching all content item versions by moving the Title to DisplayText
             // This step doesn't need to be executed for a brand new site
 
@@ -63,13 +64,13 @@ namespace OrchardCore.Title
                         && UpdateTitle(contentItemVersion.Content))
                     {
                         _session.Save(contentItemVersion);
-                        _logger.LogInformation($"A content item version's Title was upgraded: '{contentItemVersion.ContentItemVersionId}'");
+                        _logger.LogInformation("A content item version's Title was upgraded: {ContentItemVersionId}", contentItemVersion.ContentItemVersionId);
                     }
 
                     lastDocumentId = contentItemVersion.Id;
                 }
 
-                await _session.CommitAsync();
+                await _session.SaveChangesAsync();
             }
 
             bool UpdateTitle(JToken content)

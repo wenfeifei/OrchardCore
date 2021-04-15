@@ -2,16 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using OrchardCore.Abstractions.Setup;
 using OrchardCore.Environment.Shell;
 using OrchardCore.Environment.Shell.Builders;
 using OrchardCore.Environment.Shell.Descriptor;
 using OrchardCore.Environment.Shell.Descriptor.Models;
 using OrchardCore.Environment.Shell.Models;
-using OrchardCore.Environment.Shell.Scope;
 using OrchardCore.Modules;
 using OrchardCore.Recipes.Models;
 using OrchardCore.Recipes.Services;
@@ -20,38 +21,57 @@ using YesSql;
 
 namespace OrchardCore.Setup.Services
 {
+    /// <summary>
+    /// Represents a setup service.
+    /// </summary>
     public class SetupService : ISetupService
     {
         private readonly IShellHost _shellHost;
         private readonly IShellContextFactory _shellContextFactory;
+        private readonly ISetupUserIdGenerator _setupUserIdGenerator;
         private readonly IEnumerable<IRecipeHarvester> _recipeHarvesters;
         private readonly ILogger _logger;
-        private readonly IStringLocalizer T;
+        private readonly IStringLocalizer S;
         private readonly IHostApplicationLifetime _applicationLifetime;
+        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly string _applicationName;
         private IEnumerable<RecipeDescriptor> _recipes;
 
+        /// <summary>
+        /// Creates a new instance of <see cref="SetupService"/>.
+        /// </summary>
+        /// <param name="shellHost">The <see cref="IShellHost"/>.</param>
+        /// <param name="hostingEnvironment">The <see cref="IHostEnvironment"/>.</param>
+        /// <param name="shellContextFactory">The <see cref="IShellContextFactory"/>.</param>
+        /// <param name="setupUserIdGenerator">The <see cref="ISetupUserIdGenerator"/>.</param>
+        /// <param name="recipeHarvesters">A list of <see cref="IRecipeHarvester"/>s.</param>
+        /// <param name="logger">The <see cref="ILogger"/>.</param>
+        /// <param name="stringLocalizer">The <see cref="IStringLocalizer"/>.</param>
+        /// <param name="applicationLifetime">The <see cref="IHostApplicationLifetime"/>.</param>
+        /// <param name="httpContextAccessor">The <see cref="IHttpContextAccessor"/>.</param>
         public SetupService(
             IShellHost shellHost,
             IHostEnvironment hostingEnvironment,
             IShellContextFactory shellContextFactory,
-            IRunningShellTable runningShellTable,
+            ISetupUserIdGenerator setupUserIdGenerator,
             IEnumerable<IRecipeHarvester> recipeHarvesters,
             ILogger<SetupService> logger,
-            IStringLocalizerFactory stringLocalizerFactory,
             IStringLocalizer<SetupService> stringLocalizer,
-            IHostApplicationLifetime applicationLifetime
-            )
+            IHostApplicationLifetime applicationLifetime,
+            IHttpContextAccessor httpContextAccessor)
         {
             _shellHost = shellHost;
             _applicationName = hostingEnvironment.ApplicationName;
             _shellContextFactory = shellContextFactory;
+            _setupUserIdGenerator = setupUserIdGenerator;
             _recipeHarvesters = recipeHarvesters;
             _logger = logger;
-            T = stringLocalizer;
+            S = stringLocalizer;
             _applicationLifetime = applicationLifetime;
+            _httpContextAccessor = httpContextAccessor;
         }
 
+        /// <inheridoc />
         public async Task<IEnumerable<RecipeDescriptor>> GetSetupRecipesAsync()
         {
             if (_recipes == null)
@@ -63,6 +83,7 @@ namespace OrchardCore.Setup.Services
             return _recipes;
         }
 
+        /// <inheridoc />
         public async Task<string> SetupAsync(SetupContext context)
         {
             var initialState = context.ShellSettings.State;
@@ -84,7 +105,7 @@ namespace OrchardCore.Setup.Services
             }
         }
 
-        public async Task<string> SetupInternalAsync(SetupContext context)
+        private async Task<string> SetupInternalAsync(SetupContext context)
         {
             string executionId;
 
@@ -107,18 +128,38 @@ namespace OrchardCore.Setup.Services
             // Set shell state to "Initializing" so that subsequent HTTP requests are responded to with "Service Unavailable" while Orchard is setting up.
             context.ShellSettings.State = TenantState.Initializing;
 
+            // Due to database collation we normalize the userId to lower invariant.
+            // During setup there are no users so we do not need to check unicity.
+            context.Properties[SetupConstants.AdminUserId] = _setupUserIdGenerator.GenerateUniqueId().ToLowerInvariant();
+
+            var recipeEnvironmentFeature = new RecipeEnvironmentFeature();
+            if (context.Properties.TryGetValue(SetupConstants.AdminUserId, out var adminUserId))
+            {
+                recipeEnvironmentFeature.Properties[SetupConstants.AdminUserId] = adminUserId;
+            }
+            if (context.Properties.TryGetValue(SetupConstants.AdminUsername, out var adminUsername))
+            {
+                recipeEnvironmentFeature.Properties[SetupConstants.AdminUsername] = adminUsername;
+            }
+            if (context.Properties.TryGetValue(SetupConstants.SiteName, out var siteName))
+            {
+                recipeEnvironmentFeature.Properties[SetupConstants.SiteName] = siteName;
+            }
+
+            _httpContextAccessor.HttpContext.Features.Set(recipeEnvironmentFeature);
+
             var shellSettings = new ShellSettings(context.ShellSettings);
 
             if (string.IsNullOrEmpty(shellSettings["DatabaseProvider"]))
             {
-                shellSettings["DatabaseProvider"] = context.DatabaseProvider;
-                shellSettings["ConnectionString"] = context.DatabaseConnectionString;
-                shellSettings["TablePrefix"] = context.DatabaseTablePrefix;
+                shellSettings["DatabaseProvider"] = context.Properties.TryGetValue(SetupConstants.DatabaseProvider, out var databaseProvider) ? databaseProvider?.ToString() : String.Empty;
+                shellSettings["ConnectionString"] = context.Properties.TryGetValue(SetupConstants.DatabaseConnectionString, out var databaseConnectionString) ? databaseConnectionString?.ToString() : String.Empty;
+                shellSettings["TablePrefix"] = context.Properties.TryGetValue(SetupConstants.DatabaseTablePrefix, out var databaseTablePrefix) ? databaseTablePrefix?.ToString() : String.Empty;
             }
 
             if (String.IsNullOrWhiteSpace(shellSettings["DatabaseProvider"]))
             {
-                throw new ArgumentException($"{nameof(context.DatabaseProvider)} is required");
+                throw new ArgumentException("DatabaseProvider is required");
             }
 
             // Creating a standalone environment based on a "minimum shell descriptor".
@@ -133,7 +174,7 @@ namespace OrchardCore.Setup.Services
 
             using (var shellContext = await _shellContextFactory.CreateDescribedContextAsync(shellSettings, shellDescriptor))
             {
-                await shellContext.CreateScope().UsingAsync(async scope =>
+                await shellContext.CreateScope().UsingServiceScopeAsync(async scope =>
                 {
                     IStore store;
 
@@ -151,7 +192,7 @@ namespace OrchardCore.Setup.Services
                         // unless the recipe is executing?
 
                         _logger.LogError(e, "An error occurred while initializing the datastore.");
-                        context.Errors.Add("DatabaseProvider", T["An error occurred while initializing the datastore: {0}", e.Message]);
+                        context.Errors.Add("DatabaseProvider", S["An error occurred while initializing the datastore: {0}", e.Message]);
                         return;
                     }
 
@@ -160,8 +201,7 @@ namespace OrchardCore.Setup.Services
                         .ServiceProvider
                         .GetService<IShellDescriptorManager>()
                         .UpdateShellDescriptorAsync(0,
-                            shellContext.Blueprint.Descriptor.Features,
-                            shellContext.Blueprint.Descriptor.Parameters);
+                            shellContext.Blueprint.Descriptor.Features);
                 });
 
                 if (context.Errors.Any())
@@ -173,50 +213,33 @@ namespace OrchardCore.Setup.Services
 
                 var recipeExecutor = shellContext.ServiceProvider.GetRequiredService<IRecipeExecutor>();
 
-                await recipeExecutor.ExecuteAsync(executionId, context.Recipe, new
-                {
-                    SiteName = context.SiteName,
-                    AdminUsername = context.AdminUsername,
-                    AdminEmail = context.AdminEmail,
-                    AdminPassword = context.AdminPassword,
-                    DatabaseProvider = context.DatabaseProvider,
-                    DatabaseConnectionString = context.DatabaseConnectionString,
-                    DatabaseTablePrefix = context.DatabaseTablePrefix
-                },
-                _applicationLifetime.ApplicationStopping);
+                await recipeExecutor.ExecuteAsync(executionId, context.Recipe, context.Properties, _applicationLifetime.ApplicationStopping);
             }
 
-            // Reloading the shell context as the recipe  has probably updated its features
-            using (var shellContext = await _shellHost.CreateShellContextAsync(shellSettings))
+            // Reloading the shell context as the recipe has probably updated its features
+            await (await _shellHost.GetScopeAsync(shellSettings)).UsingAsync(async scope =>
             {
-                await shellContext.CreateScope().UsingAsync(async scope =>
+                void reportError(string key, string message)
                 {
-                    void reportError(string key, string message)
-                    {
-                        context.Errors[key] = message;
-                    }
-
-                    // Invoke modules to react to the setup event
-                    var setupEventHandlers = scope.ServiceProvider.GetServices<ISetupEventHandler>();
-                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<SetupService>>();
-
-                    await setupEventHandlers.InvokeAsync(x => x.Setup(
-                        context.SiteName,
-                        context.AdminUsername,
-                        context.AdminEmail,
-                        context.AdminPassword,
-                        context.DatabaseProvider,
-                        context.DatabaseConnectionString,
-                        context.DatabaseTablePrefix,
-                        context.SiteTimeZone,
-                        reportError
-                    ), logger);
-                });
-
-                if (context.Errors.Any())
-                {
-                    return executionId;
+                    context.Errors[key] = message;
                 }
+
+                // Invoke modules to react to the setup event
+                var setupEventHandlers = scope.ServiceProvider.GetServices<ISetupEventHandler>();
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<SetupService>>();
+
+                await setupEventHandlers.InvokeAsync((handler, context) => handler.Setup(
+                    context.Properties,
+                    reportError
+                ), context, logger);
+            });
+
+            if (context.Errors.Any())
+            {
+                // So that the new registered shell is reverted back to the 'Uninitialized' state.
+                context.ShellSettings = shellSettings;
+
+                return executionId;
             }
 
             // Update the shell state

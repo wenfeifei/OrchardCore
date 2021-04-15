@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using OrchardCore.DisplayManagement;
 using OrchardCore.DisplayManagement.Descriptors;
 using OrchardCore.DisplayManagement.Descriptors.ShapePlacementStrategy;
 using OrchardCore.DisplayManagement.Shapes;
@@ -58,11 +57,11 @@ namespace OrchardCore.ContentManagement.Display.Placement
 
             return contentTypes.Any(ct =>
             {
-                if (ct.EndsWith("*"))
+                if (ct.EndsWith('*'))
                 {
                     var prefix = ct.Substring(0, ct.Length - 1);
 
-                    return (contentItem.ContentType ?? "").StartsWith(prefix, StringComparison.OrdinalIgnoreCase)  || (GetStereotype(context) ?? "").StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+                    return (contentItem.ContentType ?? "").StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || (GetStereotype(context) ?? "").StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
                 }
 
                 return contentItem.ContentType == ct || GetStereotype(context) == ct;
@@ -83,7 +82,7 @@ namespace OrchardCore.ContentManagement.Display.Placement
         protected bool HasContent(ShapePlacementContext context)
         {
             var shape = context.ZoneShape as Shape;
-            return shape != null && shape.Properties["ContentItem"] != null;
+            return shape != null && shape.TryGetProperty("ContentItem", out object contentItem) && contentItem != null;
         }
 
         protected ContentItem GetContent(ShapePlacementContext context)
@@ -94,7 +93,9 @@ namespace OrchardCore.ContentManagement.Display.Placement
             }
 
             var shape = context.ZoneShape as Shape;
-            return shape.Properties["ContentItem"] as ContentItem;
+            shape.TryGetProperty("ContentItem", out ContentItem contentItem);
+
+            return contentItem;
         }
     }
 }

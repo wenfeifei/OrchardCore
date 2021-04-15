@@ -1,11 +1,6 @@
-function confirmDialog({ title, message, okText, cancelText, okCssClass, cancelCssClass, callback }) {
-    var $confirmRemoveModalMetadata = $('#confirmRemoveModalMetadata')
-    title = title || $confirmRemoveModalMetadata.data('title');
-    message = message || $confirmRemoveModalMetadata.data('message');
-    okText = okText || $confirmRemoveModalMetadata.data('ok');
-    cancelText = cancelText || $confirmRemoveModalMetadata.data('cancel');
-    okCssClass = okCssClass || $confirmRemoveModalMetadata.data('okClass');
-    cancelCssClass = cancelCssClass || $confirmRemoveModalMetadata.data('cancelClass');
+function confirmDialog({callback, ...options}) {
+    const defaultOptions = $('#confirmRemoveModalMetadata').data();
+    const { title, message, okText, cancelText, okClass, cancelClass } = $.extend({}, defaultOptions, options);
 
     $('<div id="confirmRemoveModal" class="modal" tabindex="-1" role="dialog">\
         <div class="modal-dialog modal-dialog-centered" role="document">\
@@ -20,8 +15,8 @@ function confirmDialog({ title, message, okText, cancelText, okCssClass, cancelC
                     <p>' + message +'</p>\
                 </div>\
                 <div class="modal-footer">\
-                    <button id="modalOkButton" type="button" class="btn ' + okCssClass + '">' + okText + '</button>\
-                    <button id="modalCancelButton" type="button" class="btn ' + cancelCssClass + '" data-dismiss="modal">' + cancelText + '</button>\
+                    <button id="modalOkButton" type="button" class="btn ' + okClass + '">' + okText + '</button>\
+                    <button id="modalCancelButton" type="button" class="btn ' + cancelClass + '" data-dismiss="modal">' + cancelText + '</button>\
                 </div>\
             </div>\
         </div>\
@@ -46,30 +41,23 @@ function confirmDialog({ title, message, okText, cancelText, okCssClass, cancelC
     });
 }
 
-$(function () {
+// Prevents page flickering while downloading css
+$(window).on("load", function() {
     $("body").removeClass("preload");
 });
 
 $(function () {
-    $("body").on("click", "[itemprop~='RemoveUrl']", function () {
+    $("body").on("click", "[data-url-af~='RemoveUrl'], a[itemprop~='RemoveUrl']", function () {
         var _this = $(this);
+        if(_this.filter("a[itemprop~='UnsafeUrl']").length == 1)
+        {
+            console.warn('Please use data-url-af instead of itemprop attribute for confirm modals. Using itemprop will eventually become deprecated.')
+        }
         // don't show the confirm dialog if the link is also UnsafeUrl, as it will already be handled below.
-        if (_this.filter("[itemprop~='UnsafeUrl']").length == 1) {
+        if (_this.filter("[data-url-af~='UnsafeUrl'], a[itemprop~='UnsafeUrl']").length == 1) {
             return false;
         }
-        // use a custom message if its set in data-message
-        var title = _this.data('title');
-        var message = _this.data('message');
-        var okText = _this.data('ok');
-        var cancelText = _this.data('cancel');
-        var okCssClass = _this.data('okClass');
-        var cancelCssClass = _this.data('cancelClass');
-        confirmDialog({ title: title,
-             message: message,
-             okText: okText, 
-             cancelText: cancelText, 
-             okCssClass: okCssClass, 
-             cancelCssClass: cancelCssClass,  
+        confirmDialog({..._this.data(),
              callback: function(resp) {
                 if (resp) {
                     var url = _this.attr('href');
@@ -92,8 +80,12 @@ $(function () {
 $(function () {
     var magicToken = $("input[name=__RequestVerificationToken]").first();
     if (magicToken) {
-        $("body").on("click", "a[itemprop~='UnsafeUrl'], a[data-unsafe-url]", function () {
+        $("body").on("click", "a[data-url-af~='UnsafeUrl'], a[itemprop~='UnsafeUrl']", function () {
             var _this = $(this);
+            if(_this.filter("a[itemprop~='UnsafeUrl']").length == 1)
+            {
+                console.warn('Please use data-url-af instead of itemprop attribute for confirm modals. Using itemprop will eventually become deprecated.')
+            }
             var hrefParts = _this.attr("href").split("?");
             var form = $("<form action=\"" + hrefParts[0] + "\" method=\"POST\" />");
             form.append(magicToken.clone());
@@ -109,20 +101,9 @@ $(function () {
             $("body").append(form);
 
             var unsafeUrlPrompt = _this.data("unsafe-url");
-            var title = _this.data("title");
-            var message = _this.data('message');
-            var okText = _this.data('ok');
-            var cancelText = _this.data('cancel');
-            var okCssClass = _this.data('okClass');
-            var cancelCssClass = _this.data('cancelClass');
 
             if (unsafeUrlPrompt && unsafeUrlPrompt.length > 0) {
-                confirmDialog({title:title, 
-                    message: unsafeUrlPrompt, 
-                    okText: okText, 
-                    cancelText: cancelText, 
-                    okCssClass: okCssClass, 
-                    cancelCssClass: cancelCssClass,
+                confirmDialog({..._this.data(),
                     callback: function(resp) {
                         if (resp) {
                             form.submit();
@@ -133,13 +114,8 @@ $(function () {
                 return false;
             }
 
-            if (_this.filter("[itemprop~='RemoveUrl']").length == 1) {
-                confirmDialog({title: title, 
-                    message: message,
-                    okText: okText, 
-                    cancelText: cancelText, 
-                    okCssClass: okCssClass, 
-                    cancelCssClass: cancelCssClass, 
+            if (_this.filter("[data-url-af~='RemoveUrl'], a[itemprop~='RemoveUrl']").length == 1) {
+                confirmDialog({..._this.data(), 
                     callback: function(resp) {
                         if (resp) {
                             form.submit();
@@ -228,3 +204,5 @@ function isLetter(str) {
 function isNumber(str) {
     return str.length === 1 && str.match(/[0-9]/i);
 }
+
+$('[data-toggle="tooltip"]').tooltip();

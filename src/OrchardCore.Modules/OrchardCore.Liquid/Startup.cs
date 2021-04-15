@@ -1,13 +1,13 @@
+using System;
 using Fluid;
 using Fluid.Values;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Linq;
 using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Display.ContentDisplay;
-using OrchardCore.ContentManagement.Handlers;
 using OrchardCore.Data.Migration;
 using OrchardCore.DisplayManagement.Descriptors;
-using OrchardCore.DisplayManagement.Views;
+using OrchardCore.DisplayManagement.Liquid.Filters;
 using OrchardCore.Indexing;
 using OrchardCore.Liquid.Drivers;
 using OrchardCore.Liquid.Filters;
@@ -21,35 +21,39 @@ namespace OrchardCore.Liquid
 {
     public class Startup : StartupBase
     {
-        static Startup()
-        {
-            TemplateContext.GlobalMemberAccessStrategy.Register<ContentItem>();
-            TemplateContext.GlobalMemberAccessStrategy.Register<ContentElement>();
-            TemplateContext.GlobalMemberAccessStrategy.Register<ShapeViewModel<ContentItem>>();
-
-            // When accessing a property of a JObject instance
-            TemplateContext.GlobalMemberAccessStrategy.Register<JObject, object>((obj, name) => obj[name]);
-
-            // Prevent JTokens from being converted to an ArrayValue as they implement IEnumerable
-            FluidValue.SetTypeMapping<JObject>(o => new ObjectValue(o));
-            FluidValue.SetTypeMapping<JValue>(o => FluidValue.Create(((JValue)o).Value));
-            FluidValue.SetTypeMapping<System.DateTime>(o => new ObjectValue(o));
-        }
-
         public override void ConfigureServices(IServiceCollection services)
         {
             services.AddScoped<ISlugService, SlugService>();
             services.AddScoped<ILiquidTemplateManager, LiquidTemplateManager>();
 
-            services.AddLiquidFilter<TimeZoneFilter>("local");
-            services.AddLiquidFilter<SlugifyFilter>("slugify");
-            services.AddLiquidFilter<ContainerFilter>("container");
-            services.AddLiquidFilter<DisplayTextFilter>("display_text");
-            services.AddLiquidFilter<DisplayUrlFilter>("display_url");
-            services.AddLiquidFilter<ContentUrlFilter>("href");
-            services.AddLiquidFilter<AbsoluteUrlFilter>("absolute_url");
-            services.AddLiquidFilter<LiquidFilter>("liquid");
-            services.AddLiquidFilter<JsonFilter>("json");
+            services.Configure<TemplateOptions>(options =>
+            {
+                options.Filters.AddFilter("t", LiquidViewFilters.Localize);
+                options.Filters.AddFilter("html_class", LiquidViewFilters.HtmlClass);
+                options.Filters.AddFilter("shape_properties", LiquidViewFilters.ShapeProperties);
+
+                // Used to provide a factory to return a value based on a property name that is unknown at registration time.
+                options.MemberAccessStrategy.Register<LiquidPropertyAccessor, FluidValue>((obj, name) => obj.GetValueAsync(name));
+
+                // When a property of a JObject value is accessed, try to look into its properties
+                options.MemberAccessStrategy.Register<JObject, object>((source, name) => source[name]);
+
+                // Convert JToken to FluidValue
+                options.ValueConverters.Add(x => x is JObject o ? new ObjectValue(o) : null);
+                options.ValueConverters.Add(x => x is JValue v ? v.Value : null);
+                options.ValueConverters.Add(x => x is DateTime d ? new ObjectValue(d) : null);
+
+                options.Filters.AddFilter("json", JsonFilter.Json);
+                options.Filters.AddFilter("jsonparse", JsonParseFilter.JsonParse);
+            })
+            .AddLiquidFilter<TimeZoneFilter>("local")
+            .AddLiquidFilter<SlugifyFilter>("slugify")
+            .AddLiquidFilter<LiquidFilter>("liquid")
+            .AddLiquidFilter<ContentUrlFilter>("href")
+            .AddLiquidFilter<AbsoluteUrlFilter>("absolute_url")
+            .AddLiquidFilter<NewShapeFilter>("shape_new")
+            .AddLiquidFilter<ShapeRenderFilter>("shape_render")
+            .AddLiquidFilter<ShapeStringifyFilter>("shape_stringify");
         }
     }
 
@@ -59,12 +63,22 @@ namespace OrchardCore.Liquid
         public override void ConfigureServices(IServiceCollection services)
         {
             // Liquid Part
-            services.AddScoped<IContentPartDisplayDriver, LiquidPartDisplay>();
             services.AddScoped<IShapeTableProvider, LiquidShapes>();
-            services.AddContentPart<LiquidPart>();
+            services.AddContentPart<LiquidPart>()
+                .UseDisplayDriver<LiquidPartDisplayDriver>()
+                .AddHandler<LiquidPartHandler>();
+
             services.AddScoped<IDataMigration, Migrations>();
             services.AddScoped<IContentPartIndexHandler, LiquidPartIndexHandler>();
-            services.AddScoped<IContentPartHandler, LiquidPartHandler>();
+        }
+    }
+
+    [RequireFeatures("OrchardCore.Shortcodes")]
+    public class ShortcodesStartup : StartupBase
+    {
+        public override void ConfigureServices(IServiceCollection services)
+        {
+            services.AddLiquidFilter<ShortcodeFilter>("shortcode");
         }
     }
 }

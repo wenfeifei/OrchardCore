@@ -14,17 +14,17 @@ namespace OrchardCore.Scripting
             IEnumerable<IGlobalMethodProvider> globalMethodProviders)
         {
             _engines = engines;
-            GlobalMethodProviders = new List<IGlobalMethodProvider>(globalMethodProviders);
+            GlobalMethodProviders = new List<IGlobalMethodProvider>(globalMethodProviders).AsReadOnly();
         }
 
-        public IList<IGlobalMethodProvider> GlobalMethodProviders { get; }
+        public IReadOnlyList<IGlobalMethodProvider> GlobalMethodProviders { get; }
 
         public object Evaluate(string directive,
             IFileProvider fileProvider,
             string basePath,
             IEnumerable<IGlobalMethodProvider> scopedMethodProviders)
         {
-            var directiveIndex = directive.IndexOf(":");
+            var directiveIndex = directive.IndexOf(':');
 
             if (directiveIndex == -1 || directiveIndex >= directive.Length - 2)
             {
